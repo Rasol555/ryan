@@ -1,39 +1,57 @@
 worker_processes 1;
-events { worker_connections 1024; }
+pid /run/nginx/nginx.pid;
+
+events {
+    worker_connections 1024;
+}
 
 http {
-    server {
-        listen ${NGINX_PORT};
+    access_log off;
+    error_log /dev/stderr warn;
 
-        location /managepanel/ {
-            proxy_pass http://127.0.0.1:2053/managepanel/;
+    server {
+        listen ${PORT};
+
+        # بررسی سلامت
+        location = /health {
+            return 200 "ok";
+            add_header Content-Type text/plain;
+        }
+
+        # پنل مدیریت
+        location /${PANEL_PATH}/ {
+            proxy_pass http://127.0.0.1:2053;
             proxy_http_version 1.1;
             proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection "upgrade";
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
         }
 
+        # لینک اشتراک (Subscription) - بعد از فعال‌کردن در تنظیمات پنل
         location /sub/ {
             proxy_pass http://127.0.0.1:2096/sub/;
-            proxy_http_version 1.1;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
         }
 
-        location / {
+        # ترافیک Xray (VLESS روی WebSocket) فقط روی این مسیر
+        location /${WS_PATH} {
             proxy_pass http://127.0.0.1:10000;
             proxy_http_version 1.1;
             proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection "upgrade";
             proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_read_timeout 86400s;
+            proxy_send_timeout 86400s;
+        }
+
+        location / {
+            return 404;
         }
     }
 }
